@@ -77,10 +77,9 @@ static void MX_TIM4_Init(void);
 /* Timer interrupt for heart rate and respitory rate */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	if(htim == &htim4)
-	{
-		bHeart = true;
-	}
+	/* uart send rate is equal to the timer 4 freq */
+	if(htim == &htim4) { bHeart = true; }
+
 	/* read adc */
 	ctg_read_adc(&hadc1,&voltage);
 
@@ -89,16 +88,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
-		previous_time = new_time;
-		if(current_time > 250 && bHeart)
+		if(current_time > 250)
 		{
-			bpm = (1.0 / (current_time / 1000.0) ) * 60 * 0.91;
-			char array[7];
-			sprintf(array,"%lu",bpm);
-			ctg_print(&huart2, array);
-			strncpy(array,"",7);
-			bpm = 0;
-			bHeart = false;
+			previous_time = new_time;
+			if(bHeart)
+			{
+				bpm = (1.0 / (current_time / 1000.0) ) * 60;
+				char array[7];
+				sprintf(array,"%lu",bpm);
+				ctg_print(&huart2, array);
+				strncpy(array,"",7);
+				bpm = 0;
+				bHeart = false;
+			}
 		}
 	}
 }
