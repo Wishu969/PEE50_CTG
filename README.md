@@ -16,4 +16,6 @@ modules implemented:
 - ADC   :1000Hz sampel rate ADC for heartrate and respitory rate.
 - DMA   :transfering data between memory and DAC peripheral. 
 
-
+## pinout
+ - heartrate ADC PA0
+ - DAC PA4
