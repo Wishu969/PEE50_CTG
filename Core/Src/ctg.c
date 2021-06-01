@@ -12,6 +12,23 @@ void ctg_print(UART_HandleTypeDef *huart, char * buffer)
 	HAL_UART_Transmit(huart, (uint8_t *)newline, 2, 10);
 }
 
+void ctg_read_adc(ADC_HandleTypeDef *hadc, float *voltage)
+{
+	  /* (re)start ADC sampling */
+	  HAL_ADC_Start(hadc);
+
+	  /* poll 1ms for conversion */
+	  HAL_ADC_PollForConversion(hadc, 1);
+
+	  /* read ADC value */
+	  uint32_t sample = HAL_ADC_GetValue(hadc);
+
+	  /* convert to voltage */
+	  *voltage = ((float)sample * (float)3.3);
+	  /* divide voltage by 4096  */
+	  *voltage = *voltage / 4096;
+}
+
 uint32_t sinewave16[16] =
 {
 		2048,
