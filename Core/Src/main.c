@@ -105,6 +105,9 @@ int main(void)
   /* start timer for dma */
   HAL_TIM_Base_Start_IT(&htim2);
 
+  /* test print */
+  ctg_print(&huart2, "Hello World!");
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
