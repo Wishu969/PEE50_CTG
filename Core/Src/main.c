@@ -26,15 +26,27 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+/* use linked list instead of array */
+typedef struct node {
+    float sample;
+    struct node *next;
+} node_t;
+
+node_t *head = NULL;
+node_t *tail = NULL;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define FREQ 30
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -61,6 +73,25 @@ uint32_t current_time = 0;
 uint32_t previous_time = 0;
 uint32_t bpm = 0;
 bool bHeart = false;
+float sum = 0;
+/* shift list with one npde */
+void shift(float sample)
+{
+	/* init node */
+	node_t *n = (node_t*) malloc(sizeof(node_t));
+	n->sample = sample;
+	n->next = NULL;
+
+	/* add to tail */
+	tail->next = n;
+	tail = n;
+
+	/* remove first node */
+	node_t *temp = head;
+	head = head->next;
+	free(temp);
+}
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -83,8 +114,24 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	/* read adc */
 	ctg_read_adc(&hadc1,&voltage);
 
+	/* the only difference betweeen previous sums is
+	 * the first and last index */
+
+	shift(voltage);
+	sum -= head->sample;
+	sum += tail->sample;
+
+	/* calculate average voltage for 30 ms */
+	float avg_voltage = (sum / 30);
+
+	char array[7];
+	sprintf(array,"%.2f",avg_voltage);
+	ctg_print(&huart2, array);
+	strncpy(array,"",7);
+
 	/* heart beat detected */
-	if(voltage > 3)
+	//if(avg_voltage > 3)
+	if(false)
 	{
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
@@ -117,6 +164,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+
+	/* initialise linked list with 30 empty nodes */
+	for(int i = 0; i < FREQ; i++)
+	{
+		node_t *n = (node_t*) malloc(sizeof(node_t));
+		n->sample = 0.0;
+		n->next = NULL;
+
+		if(head == NULL)
+		{
+			head = n;
+			tail = head;
+		}
+		else
+		{
+			n->next = head;
+			head = n;
+		}
+	}
 
   /* USER CODE END 1 */
 

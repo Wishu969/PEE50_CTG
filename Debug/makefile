@@ -62,7 +62,7 @@ main-build: PEE50_CTG.elf secondary-outputs
 
 # Tool invocations
 PEE50_CTG.elf: $(OBJS) $(USER_OBJS) C:\Users\vishw\STM32CubeIDE\workspace_1.6.0\PEE50_CTG\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "PEE50_CTG.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\vishw\STM32CubeIDE\workspace_1.6.0\PEE50_CTG\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="PEE50_CTG.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "PEE50_CTG.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\vishw\STM32CubeIDE\workspace_1.6.0\PEE50_CTG\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="PEE50_CTG.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
