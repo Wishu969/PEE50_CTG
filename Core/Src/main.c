@@ -41,12 +41,17 @@ typedef struct node {
 node_t *head = NULL;
 node_t *tail = NULL;
 
+node_t *root = NULL;
+node_t *leaf = NULL;
+
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define FREQ 30
+#define FREQ 38
+#define AVG	4000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -74,6 +79,18 @@ uint32_t previous_time = 0;
 uint32_t bpm = 0;
 bool bHeart = false;
 float sum = 0;
+float save_ecg[100];
+float save_maxecg[100];
+float sum1 = 0;
+float sum_max = 0;
+float center_ecg = 0;
+float max_voltage = 0;
+float avg_max_voltage = 0;
+int count = 0;
+int fill = 0;
+int kolom = 0;
+float voltage_max = 0;
+float gem_sum = 0;
 /* shift list with one npde */
 void shift(float sample)
 {
@@ -89,6 +106,23 @@ void shift(float sample)
 	/* remove first node */
 	node_t *temp = head;
 	head = head->next;
+	free(temp);
+}
+
+void shift2(float sample)
+{
+	/* init node */
+	node_t *n = (node_t*) malloc(sizeof(node_t));
+	n->sample = sample;
+	n->next = NULL;
+
+	/* add to tail */
+	leaf->next = n;
+	leaf = n;
+
+	/* remove first node */
+	node_t *temp = root;
+	root = root->next;
 	free(temp);
 }
 
@@ -108,11 +142,15 @@ static void MX_TIM4_Init(void);
 /* Timer interrupt for heart rate and respitory rate */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	/* uart send rate is equal to the timer 4 freq */
+	//Every 1ms it will go in this interrupt.
+		/* uart send rate is equal to the timer 4 freq */
 	if(htim == &htim4) { bHeart = true; }
 
 	/* read adc */
 	ctg_read_adc(&hadc1,&voltage);
+
+
+
 
 	/* the only difference betweeen previous sums is
 	 * the first and last index */
@@ -121,24 +159,92 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	sum -= head->sample;
 	sum += tail->sample;
 
-	/* calculate average voltage for 30 ms */
 	float avg_voltage = (sum / 30);
 
-	char array[7];
-	sprintf(array,"%.2f",avg_voltage);
-	ctg_print(&huart2, array);
-	strncpy(array,"",7);
+	shift2(avg_voltage);
+	gem_sum -= root->sample;
+	gem_sum += leaf->sample;
+	float center = gem_sum / AVG;
+
+	avg_voltage -= center;
+	/* calculate average voltage for 30 ms */
+
+	//float avg_voltage = voltage;
+	///*
+	/*
+	count++;
+	//every 20ms it will save the value
+	if (!(count%20)){
+		save_ecg[kolom] = avg_voltage;
+		//save_maxecg[kolom] = max_voltage;
+		kolom++;
+	}
+	//every 2s it will avarage the saved values
+	if (count == 2000){
+		while (fill != 100){
+			sum1 += save_ecg[fill];
+			//sum_max += save_maxecg[fill];
+			fill++;
+		}
+		center_ecg = sum1/100;
+		sum1 = 0;
+		count = 0;
+		kolom = 0;
+		fill = 0;
+		//avg_max_voltage = sum_max/100;
+		//sum_max = 0;
+	}
+
+
+	// shift to 0V
+	avg_voltage -= center_ecg;
+	*/
+	//*/
+
+
+
+
+	/*
+	//if (avg_voltage < (max_voltage - 0.2)){
+	if (avg_voltage < (0)){
+		avg_voltage = 0;
+	}
+
+	if (max_voltage < avg_voltage){
+		max_voltage = avg_voltage;
+	}
+	*/
+	/*
+	if(avg_voltage > 0.3)
+	{
+		voltage_max = avg_voltage;
+		//array
+	}
+	if(avg_voltage < voltage_max)
+	{
+		avg_voltage = 0;
+	}
+	*/
+	//if(avg_voltage > 0.3){
+//		char array[7];
+//		sprintf(array,"%.2f",avg_voltage);
+//		ctg_print(&huart2, array);
+//		strncpy(array,"      ",7);
+	//}
 
 	/* heart beat detected */
 	//if(avg_voltage > 3)
-	if(false)
+
+
+	if(avg_voltage > 0.3)
+	//if(false)
 	{
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
 		if(current_time > 250)
 		{
 			previous_time = new_time;
-			if(bHeart)
+			if(true)
 			{
 				bpm = (1.0 / (current_time / 1000.0) ) * 60;
 				char array[7];
@@ -181,6 +287,24 @@ int main(void)
 		{
 			n->next = head;
 			head = n;
+		}
+	}
+
+	for(int i = 0; i < AVG; i++)
+	{
+		node_t *n = (node_t*) malloc(sizeof(node_t));
+		n->sample = 0.0;
+		n->next = NULL;
+
+		if(root == NULL)
+		{
+			root = n;
+			leaf = root;
+		}
+		else
+		{
+			n->next = root;
+			root = n;
 		}
 	}
 
@@ -546,7 +670,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 20000;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 8000;
+  htim4.Init.Period = 4000; //default 8000
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV4;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
