@@ -44,14 +44,19 @@ node_t *tail = NULL;
 node_t *root = NULL;
 node_t *leaf = NULL;
 
+node_t *head2 = NULL;
+node_t *tail2 = NULL;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+/* timeconstants in ms for calculating averages */
 #define FREQ 38
-#define AVG	4000
+#define AVG	100
+#define PEAK 100
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -72,25 +77,26 @@ TIM_HandleTypeDef htim4;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+
+/* voltage variables */
 float voltage = 0;
+float max_voltage = 0;
+
+/* time-keeping variables */
 uint32_t new_time = 0;
 uint32_t current_time = 0;
 uint32_t previous_time = 0;
-uint32_t bpm = 0;
 bool bHeart = false;
+
+int i = 0;
+int max_sum = 0;
+/* bpm variables */
+uint32_t bpm = 0;
+
+/* sum variables */
 float sum = 0;
-float save_ecg[100];
-float save_maxecg[100];
-float sum1 = 0;
-float sum_max = 0;
-float center_ecg = 0;
-float max_voltage = 0;
-float avg_max_voltage = 0;
-int count = 0;
-int fill = 0;
-int kolom = 0;
-float voltage_max = 0;
 float gem_sum = 0;
+float avg_max = 0;
 /* shift list with one npde */
 void shift(float sample)
 {
@@ -126,6 +132,22 @@ void shift2(float sample)
 	free(temp);
 }
 
+void shift3(float sample)
+{
+	/* init node */
+	node_t *n = (node_t*) malloc(sizeof(node_t));
+	n->sample = sample;
+	n->next = NULL;
+
+	/* add to tail */
+	tail2->next = n;
+	tail2 = n;
+
+	/* remove first node */
+	node_t *temp = head2;
+	head2 = head2->next;
+	free(temp);
+}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -149,95 +171,50 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	/* read adc */
 	ctg_read_adc(&hadc1,&voltage);
 
-
-
-
 	/* the only difference betweeen previous sums is
 	 * the first and last index */
-
 	shift(voltage);
 	sum -= head->sample;
 	sum += tail->sample;
 
-	float avg_voltage = (sum / 30);
+	float avg_voltage = sum / 30;
 
-	shift2(avg_voltage);
-	gem_sum -= root->sample;
-	gem_sum += leaf->sample;
+	i++;
+	if(i % 20 == 0)
+	{
+		i = 0;
+		shift2(avg_voltage);
+		gem_sum -= root->sample;
+		gem_sum += leaf->sample;
+
+//		shift3(max_voltage);
+//		max_sum -= head2->sample;
+//		max_sum += tail2->sample;
+//		max_voltage = avg_max;
+	}
+
 	float center = gem_sum / AVG;
 
+	avg_max = max_sum / PEAK;
+
+	/* center voltage to 0V */
 	avg_voltage -= center;
-	/* calculate average voltage for 30 ms */
 
-	//float avg_voltage = voltage;
-	///*
-	/*
-	count++;
-	//every 20ms it will save the value
-	if (!(count%20)){
-		save_ecg[kolom] = avg_voltage;
-		//save_maxecg[kolom] = max_voltage;
-		kolom++;
-	}
-	//every 2s it will avarage the saved values
-	if (count == 2000){
-		while (fill != 100){
-			sum1 += save_ecg[fill];
-			//sum_max += save_maxecg[fill];
-			fill++;
-		}
-		center_ecg = sum1/100;
-		sum1 = 0;
-		count = 0;
-		kolom = 0;
-		fill = 0;
-		//avg_max_voltage = sum_max/100;
-		//sum_max = 0;
-	}
+//	if(max_voltage < avg_voltage)
+//	{
+//		max_voltage = avg_voltage;
+//	}
 
 
-	// shift to 0V
-	avg_voltage -= center_ecg;
-	*/
-	//*/
+	char array[14];
+	sprintf(array,"%.2f",avg_voltage);
+	ctg_print(&huart2, array);
+	strncpy(array,"      ",14);
 
-
-
-
-	/*
-	//if (avg_voltage < (max_voltage - 0.2)){
-	if (avg_voltage < (0)){
-		avg_voltage = 0;
-	}
-
-	if (max_voltage < avg_voltage){
-		max_voltage = avg_voltage;
-	}
-	*/
-	/*
-	if(avg_voltage > 0.3)
-	{
-		voltage_max = avg_voltage;
-		//array
-	}
-	if(avg_voltage < voltage_max)
-	{
-		avg_voltage = 0;
-	}
-	*/
-	//if(avg_voltage > 0.3){
-//		char array[7];
-//		sprintf(array,"%.2f",avg_voltage);
-//		ctg_print(&huart2, array);
-//		strncpy(array,"      ",7);
-	//}
 
 	/* heart beat detected */
-	//if(avg_voltage > 3)
-
-
-	if(avg_voltage > 0.3)
-	//if(false)
+	if(false)
+	//if(avg_voltage > 0.3)
 	{
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
@@ -307,6 +284,24 @@ int main(void)
 			root = n;
 		}
 	}
+
+	for(int i = 0; i < PEAK; i++)
+		{
+			node_t *n = (node_t*) malloc(sizeof(node_t));
+			n->sample = 0.0;
+			n->next = NULL;
+
+			if(head2 == NULL)
+			{
+				head2 = n;
+				tail2 = head2;
+			}
+			else
+			{
+				n->next = head2;
+				head2 = n;
+			}
+		}
 
   /* USER CODE END 1 */
 
