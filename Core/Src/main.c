@@ -81,6 +81,7 @@ UART_HandleTypeDef huart2;
 /* voltage variables */
 float voltage = 0;
 float max_voltage = 0;
+float check_max = 0;
 
 /* time-keeping variables */
 uint32_t new_time = 0;
@@ -89,14 +90,15 @@ uint32_t previous_time = 0;
 bool bHeart = false;
 
 int i = 0;
-int max_sum = 0;
+int k = 0;
+float max_sum = 0;
 /* bpm variables */
 uint32_t bpm = 0;
-
+bool piek = false;
 /* sum variables */
 float sum = 0;
 float gem_sum = 0;
-float avg_max = 0;
+volatile float avg_max = 0;
 /* shift list with one npde */
 void shift(float sample)
 {
@@ -182,17 +184,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	i++;
 	if(i % 20 == 0)
 	{
-		i = 0;
 		shift2(avg_voltage);
 		gem_sum -= root->sample;
 		gem_sum += leaf->sample;
-
-//		shift3(max_voltage);
-//		max_sum -= head2->sample;
-//		max_sum += tail2->sample;
-//		max_voltage = avg_max;
+		//max_voltage = 0;
 	}
-
+	if(i % 2000 == 0 && k != 1)
+	{
+		k = 1;
+		i = 0;
+	}
 	float center = gem_sum / AVG;
 
 	avg_max = max_sum / PEAK;
@@ -200,38 +201,121 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	/* center voltage to 0V */
 	avg_voltage -= center;
 
-//	if(max_voltage < avg_voltage)
+	if(i % 10 == 0){
+		shift3(max_voltage);
+		max_sum -= head2->sample;
+		max_sum += tail2-> sample;
+	}
+
+//	if(i % 1000 == 0 && k == 1)
 //	{
-//		max_voltage = avg_voltage;
+//
+//		//avg_max = max_sum / PEAK;
+//		i = 0;
+//		//max_voltage = avg_max *0.8;
+//		max_voltage = avg_max * 0.8;
 //	}
 
 
+
+	if(max_voltage < avg_voltage && k == 1)
+	{
+		max_voltage = avg_voltage;
+	}
+	if(check_max < avg_voltage && k == 1)
+	{
+		check_max = avg_voltage;		//slaat de maximale spanning op in check_max
+	}
+
+	if(i % 5000 == 0 && k == 1){
+		if(max_voltage > check_max){
+			max_voltage = check_max;
+		}
+		check_max = 0;
+		i = 0;
+	}
+	//check_max deze checkt om de sec of maxvoltage > check_max
+	//check_max wordt telkens genult
+	/*
+	if(avg_max > max_voltage && k == 1)
+	{
+		max_voltage *= 0.8;
+	}
+	*/
+#define A 3
 	char array[14];
-	sprintf(array,"%.2f",avg_voltage);
+#if A == 0
+	sprintf(array,"%.4f",avg_voltage);
 	ctg_print(&huart2, array);
-	strncpy(array,"      ",14);
+	strncpy(array,"            ",14);
+#elif A == 1
+	sprintf(array,"%.4f",avg_max);
+	ctg_print(&huart2, array);
+	strncpy(array,"            ",14);
+#endif
+//	char array[22];
+//	sprintf(array,"%.4f %.4f %.4f",avg_voltage, avg_max , check_max);
+//	ctg_print(&huart2, array);
+//	strncpy(array,"      ",22);
 
-
+//	if(bpm>120){
+//		avg_max = avg_max*0.5;
+//	}
 	/* heart beat detected */
+
+//	if((avg_voltage > avg_max) && (piek == false))
+//	{
+//		new_time = HAL_GetTick();
+//		current_time = new_time - previous_time;
+//		if(current_time > 500)
+//		{
+//			previous_time = new_time;
+//			bpm = (1.0 / (current_time / 1000.0) ) * 60;
+//
+//			char array[7];
+//			sprintf(array,"%lu",bpm);
+//			ctg_print(&huart2, array);
+//			strncpy(array,"",7);
+//		}
+//		piek = true;
+//	}
+//
+//	if((avg_voltage < avg_max) && (piek == true))
+//	{
+//		piek = false;
+//	}
+
+#if A < 2
 	if(false)
+#else
+	//if(avg_voltage > 0.14)
+	//float b = ((int)(avg_max * 80) / 100.0);
+	if(avg_voltage > avg_max)
+#endif
 	//if(avg_voltage > 0.3)
 	{
+
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
-		if(current_time > 250)
+		if(current_time > 500)
 		{
 			previous_time = new_time;
-			if(true)
+			if(bHeart)
 			{
 				bpm = (1.0 / (current_time / 1000.0) ) * 60;
 				char array[7];
 				sprintf(array,"%lu",bpm);
+				//sprintf(array,"%.4f",avg_max);
 				ctg_print(&huart2, array);
 				strncpy(array,"",7);
 				bpm = 0;
 				bHeart = false;
 			}
 		}
+	}
+	else
+	{
+
 	}
 }
 /* USER CODE END PFP */

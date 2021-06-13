@@ -9,7 +9,7 @@ void ctg_print(UART_HandleTypeDef *huart, char * buffer)
 	HAL_UART_Transmit(huart, (uint8_t *)buffer, strlen(buffer), 10);
 	/* print newline */
 	char newline[2] = "\r\n";
-	HAL_UART_Transmit(huart, (uint8_t *)newline, 2, 10);
+	HAL_UART_Transmit(huart, (uint8_t *)newline, strlen(newline), 10);
 }
 
 void ctg_read_adc(ADC_HandleTypeDef *hadc, float *voltage)
