@@ -31,22 +31,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
-/* use linked list instead of array */
-typedef struct node {
-    float sample;
-    struct node *next;
-} node_t;
-
-node_t *head = NULL;
-node_t *tail = NULL;
-
-node_t *root = NULL;
-node_t *leaf = NULL;
-
-node_t *head2 = NULL;
-node_t *tail2 = NULL;
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -55,7 +39,6 @@ node_t *tail2 = NULL;
 /* timeconstants in ms for calculating averages */
 #define FREQ 38
 #define AVG	100
-#define PEAK 100
 
 /* USER CODE END PD */
 
@@ -78,78 +61,28 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+/* queue structure variables */
+struct queue* filter;
+struct queue* center;
+
 /* voltage variables */
 float voltage = 0;
-float max_voltage = 0;
-float check_max = 0;
+float avg_voltage = 0;
+float center_voltage = 0;
 
 /* time-keeping variables */
 uint32_t new_time = 0;
 uint32_t current_time = 0;
 uint32_t previous_time = 0;
+
 bool bHeart = false;
+bool bDelayed_start = true;
 
 int i = 0;
-int k = 0;
-float max_sum = 0;
+
 /* bpm variables */
 uint32_t bpm = 0;
-bool piek = false;
-/* sum variables */
-float sum = 0;
-float gem_sum = 0;
-volatile float avg_max = 0;
-/* shift list with one npde */
-void shift(float sample)
-{
-	/* init node */
-	node_t *n = (node_t*) malloc(sizeof(node_t));
-	n->sample = sample;
-	n->next = NULL;
 
-	/* add to tail */
-	tail->next = n;
-	tail = n;
-
-	/* remove first node */
-	node_t *temp = head;
-	head = head->next;
-	free(temp);
-}
-
-void shift2(float sample)
-{
-	/* init node */
-	node_t *n = (node_t*) malloc(sizeof(node_t));
-	n->sample = sample;
-	n->next = NULL;
-
-	/* add to tail */
-	leaf->next = n;
-	leaf = n;
-
-	/* remove first node */
-	node_t *temp = root;
-	root = root->next;
-	free(temp);
-}
-
-void shift3(float sample)
-{
-	/* init node */
-	node_t *n = (node_t*) malloc(sizeof(node_t));
-	n->sample = sample;
-	n->next = NULL;
-
-	/* add to tail */
-	tail2->next = n;
-	tail2 = n;
-
-	/* remove first node */
-	node_t *temp = head2;
-	head2 = head2->next;
-	free(temp);
-}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -163,138 +96,52 @@ static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
+
 /* Timer interrupt for heart rate and respitory rate */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	//Every 1ms it will go in this interrupt.
-		/* uart send rate is equal to the timer 4 freq */
+	/* Every 1ms it will go in this interrupt. */
+	/* uart send rate is equal to the timer 4 freq */
 	if(htim == &htim4) { bHeart = true; }
 
 	/* read adc */
 	ctg_read_adc(&hadc1,&voltage);
 
-	/* the only difference betweeen previous sums is
-	 * the first and last index */
-	shift(voltage);
-	sum -= head->sample;
-	sum += tail->sample;
-
-	float avg_voltage = sum / 30;
+	/* add voltage to queue and calculate average */
+	shift_queue(filter, voltage);
+	get_average(filter, &avg_voltage);
 
 	i++;
-	if(i % 20 == 0)
-	{
-		shift2(avg_voltage);
-		gem_sum -= root->sample;
-		gem_sum += leaf->sample;
-		//max_voltage = 0;
-	}
-	if(i % 2000 == 0 && k != 1)
-	{
-		k = 1;
-		i = 0;
-	}
-	float center = gem_sum / AVG;
 
-	avg_max = max_sum / PEAK;
+	/* add voltage every 20 ms to calculate center average */
+	if(i % 20 == 0) { shift_queue(center, avg_voltage); }
 
-	/* center voltage to 0V */
-	avg_voltage -= center;
+	/* raw heartsignal needs to be centered at 0V first.
+	 * add a 2 second delay in sending data
+	 * after two seconds the signal is centered */
+	if(i % 2000 == 0 && bDelayed_start) { bDelayed_start = false; i = 0; }
 
-	if(i % 10 == 0){
-		shift3(max_voltage);
-		max_sum -= head2->sample;
-		max_sum += tail2-> sample;
-	}
+	/* calculate average voltage */
+	get_average(center, &center_voltage);
 
-//	if(i % 1000 == 0 && k == 1)
-//	{
-//
-//		//avg_max = max_sum / PEAK;
-//		i = 0;
-//		//max_voltage = avg_max *0.8;
-//		max_voltage = avg_max * 0.8;
-//	}
+	/* center voltage to 0 V */
+	avg_voltage -= center_voltage;
 
-
-
-	if(max_voltage < avg_voltage && k == 1)
-	{
-		max_voltage = avg_voltage;
-	}
-	if(check_max < avg_voltage && k == 1)
-	{
-		check_max = avg_voltage;		//slaat de maximale spanning op in check_max
-	}
-
-	if(i % 5000 == 0 && k == 1){
-		if(max_voltage > check_max){
-			max_voltage = check_max;
-		}
-		check_max = 0;
-		i = 0;
-	}
-	//check_max deze checkt om de sec of maxvoltage > check_max
-	//check_max wordt telkens genult
-	/*
-	if(avg_max > max_voltage && k == 1)
-	{
-		max_voltage *= 0.8;
-	}
-	*/
-#define A 3
-	char array[14];
+#define A 0
 #if A == 0
-	sprintf(array,"%.4f",avg_voltage);
+	char array[14];
+	sprintf(array,"%.2f",avg_voltage);
 	ctg_print(&huart2, array);
 	strncpy(array,"            ",14);
 #elif A == 1
+	char array[14];
 	sprintf(array,"%.4f",avg_max);
 	ctg_print(&huart2, array);
 	strncpy(array,"            ",14);
 #endif
-//	char array[22];
-//	sprintf(array,"%.4f %.4f %.4f",avg_voltage, avg_max , check_max);
-//	ctg_print(&huart2, array);
-//	strncpy(array,"      ",22);
 
-//	if(bpm>120){
-//		avg_max = avg_max*0.5;
-//	}
-	/* heart beat detected */
-
-//	if((avg_voltage > avg_max) && (piek == false))
-//	{
-//		new_time = HAL_GetTick();
-//		current_time = new_time - previous_time;
-//		if(current_time > 500)
-//		{
-//			previous_time = new_time;
-//			bpm = (1.0 / (current_time / 1000.0) ) * 60;
-//
-//			char array[7];
-//			sprintf(array,"%lu",bpm);
-//			ctg_print(&huart2, array);
-//			strncpy(array,"",7);
-//		}
-//		piek = true;
-//	}
-//
-//	if((avg_voltage < avg_max) && (piek == true))
-//	{
-//		piek = false;
-//	}
-
-#if A < 2
-	if(false)
-#else
-	//if(avg_voltage > 0.14)
-	//float b = ((int)(avg_max * 80) / 100.0);
-	if(avg_voltage > avg_max)
-#endif
-	//if(avg_voltage > 0.3)
+	if(avg_voltage > 0.3)
 	{
-
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
 		if(current_time > 500)
@@ -304,18 +151,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			{
 				bpm = (1.0 / (current_time / 1000.0) ) * 60;
 				char array[7];
-				sprintf(array,"%lu",bpm);
-				//sprintf(array,"%.4f",avg_max);
+				sprintf(array,"H%lu",bpm);
 				ctg_print(&huart2, array);
 				strncpy(array,"",7);
 				bpm = 0;
 				bHeart = false;
 			}
 		}
-	}
-	else
-	{
-
 	}
 }
 /* USER CODE END PFP */
@@ -331,62 +173,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
-	/* initialise linked list with 30 empty nodes */
-	for(int i = 0; i < FREQ; i++)
-	{
-		node_t *n = (node_t*) malloc(sizeof(node_t));
-		n->sample = 0.0;
-		n->next = NULL;
-
-		if(head == NULL)
-		{
-			head = n;
-			tail = head;
-		}
-		else
-		{
-			n->next = head;
-			head = n;
-		}
-	}
-
-	for(int i = 0; i < AVG; i++)
-	{
-		node_t *n = (node_t*) malloc(sizeof(node_t));
-		n->sample = 0.0;
-		n->next = NULL;
-
-		if(root == NULL)
-		{
-			root = n;
-			leaf = root;
-		}
-		else
-		{
-			n->next = root;
-			root = n;
-		}
-	}
-
-	for(int i = 0; i < PEAK; i++)
-		{
-			node_t *n = (node_t*) malloc(sizeof(node_t));
-			n->sample = 0.0;
-			n->next = NULL;
-
-			if(head2 == NULL)
-			{
-				head2 = n;
-				tail2 = head2;
-			}
-			else
-			{
-				n->next = head2;
-				head2 = n;
-			}
-		}
-
+  filter = create_queue(FREQ);
+  center = create_queue(AVG);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/

@@ -1,5 +1,61 @@
 #include <ctg.h>
 #include <string.h>
+#include <stdlib.h>
+
+/* initialise queue  */
+struct queue* create_queue(int length)
+{
+	struct queue* temp = (struct queue*)malloc(sizeof(struct queue*));
+
+	temp->head = NULL;
+	temp->tail = NULL;
+	temp->sum = 0;
+	temp->avg = 0;
+	temp->length = length;
+	/* initialise queue */
+	for(int i = 0; i < temp->length; i++)
+	{
+		node *n = (node*)malloc(sizeof(node));
+		n->sample = 0.0;
+		n->next = NULL;
+
+		if(temp->head == NULL)
+		{
+			temp->head = n;
+			temp->tail = temp->head;
+		}
+		else
+		{
+			n->next = temp->head;
+			temp->head = n;
+		}
+	}
+
+	return temp;
+}
+
+/* shift samples in queue and calculate sum of queue */
+void shift_queue(struct queue * q, float sample)
+{
+	node *n = (node*)malloc(sizeof(node));
+	n->sample = sample;
+	n->next = NULL;
+
+	q->tail->next = n;
+	q->tail = n;
+	q->sum += sample;
+
+	node *temp = q->head;
+	q->sum -= temp->sample;
+	q->head = q->head->next;
+	free(temp);
+}
+
+/* calculate average of queue */
+void get_average(struct queue * q, float * avg)
+{
+	*avg = q->sum / q->length;
+}
 
 /* @brief	uart print function with newline
  * @param	huart: pointer to the uart handle
