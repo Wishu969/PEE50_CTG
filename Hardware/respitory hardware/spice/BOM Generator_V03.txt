@@ -1,0 +1,55 @@
+--- Bill of Materials ---
+
+Ref.	Mfg.	Part No.	Description
+
+
+SHUNT	--	--	resistor, 100m
+
+R15	--	--	resistor, 100
+R21	--	--	resistor, 100
+R22	--	--	resistor, 100
+
+Rskin	--	--	resistor, 1K
+
+R10	--	--	resistor, 5.6K
+
+R11	--	--	resistor, 6.8K
+
+R18	--	--	resistor, 7K
+
+R1	--	--	resistor, 10K
+R2	--	--	resistor, 10K
+R3	--	--	resistor, 10K
+R5	--	--	resistor, 10K
+R12	--	--	resistor, 10K
+R13	--	--	resistor, 10K
+R17	--	--	resistor, 10K
+
+R4	--	--	resistor, 11.6K
+
+R6	--	--	resistor, 15K
+R7	--	--	resistor, 15K
+
+R8	--	--	resistor, 18K
+R9	--	--	resistor, 18K
+
+R14	--	--	resistor, 100K
+R20	--	--	resistor, 100K
+R23	--	--	resistor, 100K
+
+C1	--	--	capacitor, 100pF
+C2	--	--	capacitor, 100pF
+C3	--	--	capacitor, 100pF
+C4	--	--	capacitor, 100pF
+
+D1	OnSemi	1N750	diode
+D2	OnSemi	1N750	diode
+
+U1	Analog Devices	LT1007	integrated circuit
+U2	Analog Devices	LT1007	integrated circuit
+U3	Analog Devices	LT1007	integrated circuit
+U4	Analog Devices	LT1007	integrated circuit
+U5	Analog Devices	LT1007	integrated circuit
+U8	Analog Devices	LT1007	integrated circuit
+
+U6	Analog Devices	LT1720	integrated circuit
