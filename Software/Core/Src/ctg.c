@@ -9,11 +9,9 @@ struct queue* create_queue(int length)
 
 	temp->head = NULL;
 	temp->tail = NULL;
-	temp->sum = 0;
-	temp->avg = 0;
-	temp->length = length;
-	/* initialise queue */
-	for(int i = 0; i < temp->length; i++)
+
+	/* initialise queue first */
+	for(int i = 0; i < length; i++)
 	{
 		node *n = (node*)malloc(sizeof(node));
 		n->sample = 0.0;
@@ -31,6 +29,11 @@ struct queue* create_queue(int length)
 		}
 	}
 
+	/* initialize variables at the end or malloc will override these values */
+	temp->sum = 0.0;
+	temp->avg = 1.0;
+	temp->length = length;
+
 	return temp;
 }
 
@@ -43,10 +46,10 @@ void shift_queue(struct queue * q, float sample)
 
 	q->tail->next = n;
 	q->tail = n;
-	q->sum += sample;
+	//q->sum += sample;
 
 	node *temp = q->head;
-	q->sum -= temp->sample;
+	//q->sum -= temp->sample;
 	q->head = q->head->next;
 	free(temp);
 }
@@ -63,9 +66,11 @@ void get_average(struct queue * q, float * avg)
 void ctg_print(UART_HandleTypeDef *huart, char * buffer)
 {
 	HAL_UART_Transmit(huart, (uint8_t *)buffer, strlen(buffer), 10);
+	//HAL_UART_Transmit_IT(huart, (uint8_t *)buffer, strlen(buffer));
 	/* print newline */
 	char newline[2] = "\r\n";
-	HAL_UART_Transmit(huart, (uint8_t *)newline, strlen(newline), 10);
+	HAL_UART_Transmit(huart, (uint8_t *)newline, 2, 10);
+	//HAL_UART_Transmit_IT(huart, (uint8_t *)buffer, strlen(buffer));
 }
 
 void ctg_read_adc(ADC_HandleTypeDef *hadc, float *voltage)

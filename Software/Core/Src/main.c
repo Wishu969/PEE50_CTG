@@ -31,6 +31,19 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+/* use linked list instead of array */
+typedef struct node {
+    float sample;
+    struct node *next;
+} node_t;
+
+node_t *head = NULL;
+node_t *tail = NULL;
+
+node_t *root = NULL;
+node_t *leaf = NULL;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -49,6 +62,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc2;
 
 DAC_HandleTypeDef hdac1;
 DMA_HandleTypeDef hdma_dac_ch1;
@@ -61,27 +75,68 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-/* queue structure variables */
-struct queue* filter;
-struct queue* center;
-
 /* voltage variables */
-float voltage = 0;
-float avg_voltage = 0;
-float center_voltage = 0;
+float voltage 			= 0;
+float avg_voltage 		= 0;
+//float center_voltage 	= 0;
+
+/* sum variables */
+float sum_voltage 		= 0;
+float sum_center 		= 0;
 
 /* time-keeping variables */
-uint32_t new_time = 0;
-uint32_t current_time = 0;
-uint32_t previous_time = 0;
+volatile uint32_t new_time 		= 0;
+volatile uint32_t current_time 	= 0;
+volatile uint32_t previous_time = 0;
 
-bool bHeart = false;
-bool bDelayed_start = true;
-
-int i = 0;
+volatile bool bHeart 			= false;
+volatile bool bDelayed_start 	= true;
+volatile bool bEcg				= false;
+volatile bool bUart				= false;
+volatile int i 					= 0;
 
 /* bpm variables */
-uint32_t bpm = 0;
+volatile uint16_t bpm 			= 0;
+
+/* comapre values for ecg and respitory */
+uint16_t ecg_level		= (0.145 * 1000);
+uint16_t resp_level		= (0.09 * 1000);
+uint16_t current_level	= 0;
+
+/* shift list with one npde */
+void shift(float sample)
+{
+	/* init node */
+	node_t *n = (node_t*) malloc(sizeof(node_t));
+	n->sample = sample;
+	n->next = NULL;
+
+	/* add to tail */
+	tail->next = n;
+	tail = n;
+
+	/* remove first node */
+	node_t *temp = head;
+	head = head->next;
+	free(temp);
+}
+
+void shift2(float sample)
+{
+	/* init node */
+	node_t *n = (node_t*) malloc(sizeof(node_t));
+	n->sample = sample;
+	n->next = NULL;
+
+	/* add to tail */
+	leaf->next = n;
+	leaf = n;
+
+	/* remove first node */
+	node_t *temp = root;
+	root = root->next;
+	free(temp);
+}
 
 /* USER CODE END PV */
 
@@ -95,63 +150,95 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_ADC2_Init(void);
 /* USER CODE BEGIN PFP */
+int k = 0;
 
 /* Timer interrupt for heart rate and respitory rate */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	/* Every 1ms it will go in this interrupt. */
+	//Every 1ms it will go in this interrupt.
 	/* uart send rate is equal to the timer 4 freq */
 	if(htim == &htim4) { bHeart = true; }
 
-	/* read adc */
-	ctg_read_adc(&hadc1,&voltage);
+	if(bEcg)
+	{
+		/* read adc */
+		ctg_read_adc(&hadc1,&voltage);
 
-	/* add voltage to queue and calculate average */
-	shift_queue(filter, voltage);
-	get_average(filter, &avg_voltage);
+		/* the only difference betweeen previous sums is
+		 * the first and last index */
+		shift(voltage);
+		sum_voltage -= head->sample;
+		sum_voltage += tail->sample;
 
-	i++;
+		avg_voltage = (sum_voltage / 30);
 
-	/* add voltage every 20 ms to calculate center average */
-	if(i % 20 == 0) { shift_queue(center, avg_voltage); }
+		i++;
+		if(i % 20 == 0)
+		{
+			shift2(avg_voltage);
+			sum_center -= root->sample;
+			sum_center += leaf->sample;
+		}
+		if(i % 2000 == 0 && k != 1)
+		{
+			k = 1;
+			i = 0;
+		}
 
-	/* raw heartsignal needs to be centered at 0V first.
-	 * add a 2 second delay in sending data
-	 * after two seconds the signal is centered */
-	if(i % 2000 == 0 && bDelayed_start) { bDelayed_start = false; i = 0; }
+		float center = sum_center / AVG;
 
-	/* calculate average voltage */
-	get_average(center, &center_voltage);
+		/* center voltage to 0V */
+		avg_voltage -= center;
+	}
+	else
+	{
+		ctg_read_adc(&hadc2,&voltage);
+		avg_voltage = voltage;
+	}
 
-	/* center voltage to 0 V */
-	avg_voltage -= center_voltage;
 
-#define A 0
-#if A == 0
+#define DEBUG_PRINT 0
+#if DEBUG_PRINT == 1
+	/* DEBUG: print heart rate */
 	char array[14];
-	sprintf(array,"%.2f",avg_voltage);
+	sprintf(array,"%.4f",avg_voltage);
 	ctg_print(&huart2, array);
 	strncpy(array,"            ",14);
-#elif A == 1
+
+#elif DEBUG_PRINT == 2
+	/* DEBUG: print respitory rate */
+	bEcg = true;
 	char array[14];
-	sprintf(array,"%.4f",avg_max);
+	sprintf(array,"%.4f", voltage);
 	ctg_print(&huart2, array);
 	strncpy(array,"            ",14);
 #endif
 
-	if(avg_voltage > 0.3)
+	//if(avg_voltage > 0.2)
+	if(avg_voltage > 0.47)
 	{
 		new_time = HAL_GetTick();
 		current_time = new_time - previous_time;
-		if(current_time > 500)
+		if(current_time > 200)
 		{
 			previous_time = new_time;
 			if(bHeart)
 			{
 				bpm = (1.0 / (current_time / 1000.0) ) * 60;
 				char array[7];
-				sprintf(array,"H%lu",bpm);
+#if DEBUG_PRINT == 0
+				if(bEcg)
+				{
+					sprintf(array,"X%d",bpm);
+				}
+				else
+				{
+					sprintf(array,"R%d",bpm);
+					//sprintf(array,"%.4f",voltage);
+				}
+#endif
 				ctg_print(&huart2, array);
 				strncpy(array,"",7);
 				bpm = 0;
@@ -160,6 +247,45 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		}
 	}
 }
+bool bSwitch = true;
+/* button interrupt callback function */
+__weak void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_13)
+	{
+		if(bSwitch == true)
+		{
+			ctg_print(&huart2, "Hartslag");
+
+			/* stop timer and dma for dac */
+			HAL_TIM_Base_Stop_IT(&htim2);
+			HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1);
+
+			/* switch multiplexer to ecg */
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+
+			bEcg = true;
+
+			bSwitch = false;
+		}
+		else
+		{
+			ctg_print(&huart2, "Ademhaling");
+
+			/* start timer and dma for dac */
+			HAL_TIM_Base_Start_IT(&htim2);
+			HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)sinewave32, 32, DAC_ALIGN_12B_R);
+
+			/* switch multiplexer to respitory */
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
+
+			bEcg = false;
+
+			bSwitch = true;
+		}
+	}
+}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -173,8 +299,44 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  filter = create_queue(FREQ);
-  center = create_queue(AVG);
+
+	/* initialise linked list with 30 empty nodes */
+	for(int i = 0; i < FREQ; i++)
+	{
+		node_t *n = (node_t*) malloc(sizeof(node_t));
+		n->sample = 0.0;
+		n->next = NULL;
+
+		if(head == NULL)
+		{
+			head = n;
+			tail = head;
+		}
+		else
+		{
+			n->next = head;
+			head = n;
+		}
+	}
+
+	for(int i = 0; i < AVG; i++)
+	{
+		node_t *n = (node_t*) malloc(sizeof(node_t));
+		n->sample = 0.0;
+		n->next = NULL;
+
+		if(root == NULL)
+		{
+			root = n;
+			leaf = root;
+		}
+		else
+		{
+			n->next = root;
+			root = n;
+		}
+	}
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -202,15 +364,10 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+  MX_ADC2_Init();
   /* USER CODE BEGIN 2 */
 
-  /* start dac with dma */
-  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)sinewave32, 32, DAC_ALIGN_12B_R);
-
-  /* start timer for dma */
-  HAL_TIM_Base_Start_IT(&htim2);
-
-  /* start timer with interrupt */
+  /* start timer with interrupt for adc */
   HAL_TIM_Base_Start_IT(&htim3);
 
   /* start timer for uart sending*/
@@ -219,12 +376,40 @@ int main(void)
   /* test print */
   ctg_print(&huart2, "PEE50 cardiotacograph");
 
+  /* start with measuring heart rate */
+  ctg_print(&huart2, "Hartslag");
+
+  /* stop timer and dma for dac */
+  HAL_TIM_Base_Stop_IT(&htim2);
+  HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1);
+
+  /* start timer and dma for dac */
+  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)sinewave32, 32, DAC_ALIGN_12B_R);
+
+  /* switch multiplexer to ecg */
+  //reset is:
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+
+  bEcg = true;
+
+  bSwitch = false;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//	  if(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == 1)
+//	  {
+//		  bEcg = true;
+//	  }
+//	  else
+//	  {
+//		  bEcg = false;
+//	  }
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -355,6 +540,62 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+  /** Common config
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc2.Init.LowPowerAutoWait = DISABLE;
+  hadc2.Init.ContinuousConvMode = DISABLE;
+  hadc2.Init.NbrOfConversion = 1;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.DMAContinuousRequests = DISABLE;
+  hadc2.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc2.Init.OversamplingMode = DISABLE;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_15;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
 
 }
 
@@ -537,7 +778,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 20000;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 4000; //default 8000
+  htim4.Init.Period = 4000;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV4;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -593,7 +834,7 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.Mode = UART_MODE_TX;
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
   huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
@@ -654,6 +895,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 

@@ -11,8 +11,7 @@ typedef struct queue_node
 {
 	float sample;
 	struct queue_node *next;
-} node;
-
+}node;
 
 struct queue
 {
